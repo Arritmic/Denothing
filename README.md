@@ -6,6 +6,7 @@
 
 Project related to the denoise of digits, numbers and symbols for OCR classification tasks.
 
+![cover](docs/images/reconstructed_epoch1.png)
 
 ## Installation
 
@@ -33,7 +34,6 @@ By default, the application read the data to train in: `/data/`
 For training the denoising CAE-based model:
 `python ./scripts/denothing_ssl_training.py`
 
-![input_arguments](data/images/visualization.png)
 
 ## TODO list
  - [ ] Add configuration files with parameters

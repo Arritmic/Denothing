@@ -272,7 +272,7 @@ def main():
     # Load the weights into the classifier [TODO] Freeze??
     ocr_classifier.encoder_cnn.load_state_dict(torch.load("../models/autoencoder_model_1506d_enc.pth"))
     # ocr_classifier.encoder_lin.load_state_dict(torch.load("../models/autoencoder_model_1506b_lin.pth"))
-    
+
     # Define the loss function
     loss_fn = torch.nn.CrossEntropyLoss()
     # loss_fn = InfoNCE()
