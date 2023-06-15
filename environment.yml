@@ -1,0 +1,23 @@
+name: Denothing
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.8
+  - pytorch
+  - cudatoolkit=11.6  # Specify the version of CUDA compatible with your GPU
+  - torchvision
+  - torchaudio
+  - pip
+  - numpy
+  - scikit-learn
+  - pandas
+  - pip:
+      - opencv-python
+      - imutils
+      - dload
+      - opencv-contrib-python
+      - pyserial
+      - matplotlib
+      - tqdm
+
