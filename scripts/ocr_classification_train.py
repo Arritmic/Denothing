@@ -138,8 +138,9 @@ def test_epoch_den(model, device, dataloader, loss_fn, noise_factor=0.3, input_t
 
 
 def main():
-
-    # load data in
+    #############################
+    #       LOAD DATASET        #
+    #############################
     data_dir = '../data/dataset'
     train_dataset = torchvision.datasets.EMNIST(root=data_dir, split="balanced",
                                                 train=True, download=True, transform=transforms.Compose([transforms.ToTensor()]))
@@ -179,6 +180,9 @@ def main():
         plt.tight_layout()
         plt.show()
 
+    #############################
+    #        DATA LOADER        #
+    #############################
     train_transform = transforms.Compose([
         transforms.ToTensor()
     ])
@@ -224,24 +228,20 @@ def main():
         combined_train_dataset.append((geometric_image, label))  # Add blurred image
         combined_train_dataset.append((rotation_image, label))  # Add blurred image
 
-    transform_temp = transforms.ToPILImage()
-    fig, axs = plt.subplots(5, 5, figsize=(8, 8))
-    for ax in axs.flatten():
-        # random.choice allows to randomly sample from a list-like object (basically anything that can be accessed with an index, like our dataset)
-        img, label = random.choice(combined_train_dataset)
-        img = transform_temp(img)
-        ax.imshow(np.array(img), cmap='gist_gray')
-        ax.set_title('Label: %d' % label)
-        ax.set_xticks([])
-        ax.set_yticks([])
-    plt.tight_layout()
-    plt.show()
+    if show_output:
+        transform_temp = transforms.ToPILImage()
+        fig, axs = plt.subplots(5, 5, figsize=(8, 8))
+        for ax in axs.flatten():
+            # random.choice allows to randomly sample from a list-like object (basically anything that can be accessed with an index, like our dataset)
+            img, label = random.choice(combined_train_dataset)
+            img = transform_temp(img)
+            ax.imshow(np.array(img), cmap='gist_gray')
+            ax.set_title('Label: %d' % label)
+            ax.set_xticks([])
+            ax.set_yticks([])
+        plt.tight_layout()
+        plt.show()
 
-    # Create a DataLoader for the combined training dataset
-    batch_size = 16  # Adjust the batch size as needed
-    combined_train_loader = torch.utils.data.DataLoader(
-        combined_train_dataset, batch_size=batch_size, shuffle=True
-    )
 
     # m = len(train_dataset)
     m = len(combined_train_dataset)
@@ -250,13 +250,17 @@ def main():
 
     print(f"    >> [OCRClassifier Train] Trainset samples after transform: {len(train_data)}")
 
-    batch_size = 256
 
+    batch_size = 256
     # The dataloaders handle shuffling, batching, etc...
     train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
     valid_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
+
+    #############################
+    #        MODEL CONFIG       #
+    #############################
     # Set the random seed for reproducible results
     torch.manual_seed(0)
 
@@ -265,12 +269,10 @@ def main():
     # Load the weights into the dictionary
 
 
-    # Assuming `classifier` is your classifier model
-
-    # Load the weights into the classifier
+    # Load the weights into the classifier [TODO] Freeze??
     ocr_classifier.encoder_cnn.load_state_dict(torch.load("../models/autoencoder_model_1506d_enc.pth"))
     # ocr_classifier.encoder_lin.load_state_dict(torch.load("../models/autoencoder_model_1506b_lin.pth"))
-
+    
     # Define the loss function
     loss_fn = torch.nn.CrossEntropyLoss()
     # loss_fn = InfoNCE()

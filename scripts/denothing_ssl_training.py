@@ -32,10 +32,7 @@ def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer, no
     # Iterate the dataloader (we do not need the label values, this is unsupervised learning)
 
     for image_batch, _ in dataloader:  # with "_" we just ignore the labels (the second element of the dataloader tuple)
-        # Move tensor to the proper device
-        # print(image_batch)
-        # print(image_batch.shape)
-        # input("stop")
+
         image_noisy = add_noise(image_batch, noise_factor)
 
         # transform_temp = transforms.ToPILImage()
@@ -51,8 +48,6 @@ def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer, no
         # plt.tight_layout()
         # plt.show()
 
-        # print(image_noisy.shape)
-        # input("stop")
         image_noisy = image_noisy.to(device)
         # Encode data
         encoded_data = encoder(image_noisy)
