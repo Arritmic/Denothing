@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import random
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,15 +13,65 @@ import torch
 import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
-from info_nce import InfoNCE
+# from info_nce import InfoNCE
 from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
 
 
+
 sys.path.insert(0, os.path.abspath('..'))
 from src.aes.autoencoder import Encoder, Decoder
 from src.augmentation.noise import *
+import skimage.metrics as metrics
+
+
+
+def compute_batch_similarity(batch1, batch2):
+    ssim_scores = []
+    mse_scores = []
+    psnr_scores = []
+
+    for i in range(len(batch1)):
+
+        image1 = batch1[i]
+        image2 = batch2[i]
+        # image1 = transforms.ToPILImage(batch1[i])
+        # image2 = transforms.ToPILImage(batch2[i])
+        image1_array = image1.cpu().squeeze().numpy()
+        image2_array = image2.cpu().squeeze().numpy()
+
+        # # Plotting setup
+        # fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        #
+        # # Plot image1
+        # axs[0].imshow(image1.cpu().squeeze().numpy(), cmap='gray')
+        # axs[0].set_title('Image 1')
+        #
+        # # Plot image2
+        # axs[1].imshow(image2.cpu().squeeze().numpy(), cmap='gray')
+        # axs[1].set_title('Image 2')
+        #
+        # # Adjust spacing between subplots
+        # plt.tight_layout()
+        #
+        # # Show the plot
+        # plt.show()
+
+        # print(image1.cpu().squeeze().numpy())
+
+        # image1_array = np.array(batch1[i]).astype(np.float64)
+        # image2_array = np.array(batch2[i]).astype(np.float64)
+        # Compute SSIM
+        ssim_scores.append(metrics.structural_similarity(image1_array, image2_array, multichannel=True, data_range=1))
+
+        # Compute MSE
+        mse_scores.append(metrics.mean_squared_error(image1_array, image2_array))
+
+        # Compute PSNR
+        psnr_scores.append(metrics.peak_signal_noise_ratio(image1_array, image2_array, data_range=1))
+
+    return np.mean(ssim_scores), np.mean(mse_scores), np.mean(psnr_scores)
 
 
 # Training function
@@ -109,7 +160,7 @@ def plot_ae_outputs_den(encoder, decoder, test_dataset, device, n=5, noise_facto
 
 
 # Testing function
-def test_epoch_den(encoder, decoder, device, dataloader, loss_fn, noise_factor=0.3):
+def test_epoch_den(encoder, decoder, device, dataloader, loss_fn, noise_factor=0.3, dataset_type="Test"):
     # Set evaluation mode for encoder and decoder
     encoder.eval()
     decoder.eval()
@@ -133,7 +184,18 @@ def test_epoch_den(encoder, decoder, device, dataloader, loss_fn, noise_factor=0
         conc_label = torch.cat(conc_label)
         # Evaluate global loss
         val_loss = loss_fn(conc_out, conc_label)
-        print(f"   >>> Test loss: {val_loss}")
+        print(f"     >> {dataset_type} loss: {val_loss}")
+
+        if dataset_type == "Test":
+            # Compute image similarity metrics for the batch
+            ssim_scores, mse_scores, psnr_scores = compute_batch_similarity(conc_label, conc_out)
+
+            # Print the average scores for the batch
+            print("Average SSIM:", np.mean(ssim_scores))
+            print("Average MSE:", np.mean(mse_scores))
+            print("Average PSNR:", np.mean(psnr_scores))
+
+
     return val_loss.data
 
 
@@ -146,6 +208,7 @@ def main():
     test_dataset = torchvision.datasets.MNIST(data_dir, train=False, download=True)
     print(f"    >> [SSL CAE Train] Trainset samples: {len(train_dataset)}")
     print(f"    >> [SSL CAE Train] Testset samples: {len(test_dataset)}")
+    data_augmentation = True
 
     #############################
     #       VISUALIZATION       #
@@ -154,7 +217,6 @@ def main():
     if show_output:
         cv2.namedWindow("Test Window", cv2.WINDOW_NORMAL)
         # cv2.namedWindow("Video Stream 2", cv2.WINDOW_NORMAL)
-
 
     if show_output:
         fig, axs = plt.subplots(5, 5, figsize=(8, 8))
@@ -167,7 +229,6 @@ def main():
             ax.set_yticks([])
         plt.tight_layout()
         plt.show()
-
 
     #############################
     #        DATA LOADER        #
@@ -185,70 +246,68 @@ def main():
     # Set the test transform
     test_dataset.transform = test_transform
 
-
     # Define the geometrical data augmentation transform
     geometric_transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.RandomVerticalFlip(p=0.2),
+        transforms.RandomVerticalFlip(p=0.4),
         transforms.RandomHorizontalFlip(p=0.3),
         transforms.ToTensor()
     ])
 
     rotation_transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.RandomRotation(35),
+        transforms.RandomRotation(45),
         transforms.ToTensor()
     ])
 
 
-    # Combine original and augmented images in the training dataset
-    combined_train_dataseta = []
-    for image, label in train_dataset:
-        geometric_image = geometric_transform(image)
-        rotation_image = rotation_transform(image)
-        combined_train_dataseta.append((image, label))  # Add original image
-        combined_train_dataseta.append((geometric_image, label))  # Add blurred image
-        combined_train_dataseta.append((rotation_image, label))  # Add blurred image
+    if data_augmentation:
+        # Combine original and augmented images in the training dataset
+        combined_train_dataseta = []
+        for image, label in train_dataset:
+            geometric_image = geometric_transform(image)
+            rotation_image = rotation_transform(image)
+            combined_train_dataseta.append((image, label))  # Add original image
+            combined_train_dataseta.append((geometric_image, label))  # Add blurred image
+            combined_train_dataseta.append((rotation_image, label))  # Add blurred image
 
+        combined_train_dataset = []
+        i = 0
+        for image, label in combined_train_dataseta:
+            combined_train_dataset.append((image, label))  # Add original image
 
-    combined_train_dataset = []
-    i = 0
-    for image, label in combined_train_dataseta:
-        combined_train_dataset.append((image, label))  # Add original image
+            if i % 5 == 0:
+                inverted_image = 1 - image
+                combined_train_dataset.append((inverted_image, label))  # Add blurred image
+            i += 1
 
-        if i % 3 == 0:
-            inverted_image = 1 - image
-            combined_train_dataset.append((inverted_image, label))  # Add blurred image
-        i += 1
+        if show_output:
+            transform_temp = transforms.ToPILImage()
+            fig, axs = plt.subplots(5, 5, figsize=(8, 8))
+            for ax in axs.flatten():
+                # random.choice allows to randomly sample from a list-like object (basically anything that can be accessed with an index, like our dataset)
+                img, label = random.choice(combined_train_dataset)
+                img = transform_temp(img)
+                ax.imshow(np.array(img), cmap='gist_gray')
+                ax.set_title('Label: %d' % label)
+                ax.set_xticks([])
+                ax.set_yticks([])
+            plt.tight_layout()
+            plt.show()
 
+        m = len(combined_train_dataset)
 
-    if show_output:
-        transform_temp = transforms.ToPILImage()
-        fig, axs = plt.subplots(5, 5, figsize=(8, 8))
-        for ax in axs.flatten():
-            # random.choice allows to randomly sample from a list-like object (basically anything that can be accessed with an index, like our dataset)
-            img, label = random.choice(combined_train_dataset)
-            img = transform_temp(img)
-            ax.imshow(np.array(img), cmap='gist_gray')
-            ax.set_title('Label: %d' % label)
-            ax.set_xticks([])
-            ax.set_yticks([])
-        plt.tight_layout()
-        plt.show()
-
-
-
-    # m = len(train_dataset)
-    m = len(combined_train_dataset)
-
-    # random_split randomly split a dataset into non-overlapping new datasets of given lengths
-    # train (55,000 images), val split (5,000 images)
-    train_data, val_data = random_split(combined_train_dataset, [int(m - m * 0.2), int(m * 0.2)])
-    # train_data, val_data = random_split(train_dataset, [int(m - m * 0.1), int(m * 0.1)])
+        # random_split randomly split a dataset into non-overlapping new datasets of given lengths
+        # train (55,000 images), val split (5,000 images)
+        train_data, val_data = random_split(combined_train_dataset, [int(m - m * 0.2), int(m * 0.2)])
+        # train_data, val_data = random_split(train_dataset, [int(m - m * 0.1), int(m * 0.1)])
+    else:
+        m = len(train_dataset)
+        train_data, val_data = random_split(train_dataset, [int(m - m * 0.2), int(m * 0.2)])
 
     print(f"    >> [SSL CAE Train] Trainset samples after transform: {len(train_data)}")
 
-    batch_size = 256
+    batch_size = 128
     # The dataloaders handle shuffling, batching, etc...
     train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
     valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
@@ -262,9 +321,8 @@ def main():
 
     # Initialize the two networks
     d = 4
-    encoder = Encoder(encoded_space_dim=d, fc2_input_dim=128)
-    decoder = Decoder(encoded_space_dim=d, fc2_input_dim=128)
-
+    encoder = Encoder(encoded_space_dim=d, fc2_input_dim=256)
+    decoder = Decoder(encoded_space_dim=d, fc2_input_dim=256)
 
     # Define the loss function
     loss_fn = torch.nn.MSELoss()
@@ -282,25 +340,44 @@ def main():
     print(f'    >>> Selected device: {device}')
 
     # Choose optimizer
+    optimizer_name = "NAdam"
+    optim = torch.optim.Adam(params_to_optimize, lr=lr)
+    if optimizer_name == "NAdam":
+        optim = torch.optim.NAdam(params_to_optimize, lr=lr)
+    elif optimizer_name == "RAdam":
+        optim = torch.optim.RAdam(params_to_optimize, lr=lr)
     # optim = torch.optim.Adam(params_to_optimize, lr=lr)
-    # optim = torch.optim.RAdam(params_to_optimize, lr=lr)
-    optim = torch.optim.NAdam(params_to_optimize, lr=lr, weight_decay=1e-5)
+    #
+
     # optim = torch.optim.RMSprop(params_to_optimize, lr=lr)
 
     # Move both the encoder and the decoder to the selected device
-    encoder.to(device)
-    decoder.to(device)
+
+    if device == "cuda":
+        encoder.cuda(0)
+        decoder.cuda(0)
+        if torch.cuda.device_count() > 1:
+            encoder = nn.DataParallel(encoder)
+            decoder = nn.DataParallel(decoder)
+        encoder.to(device)
+        decoder.to(device)
+    else:
+        encoder.to(device)
+        decoder.to(device)
+
+
 
     #############################
     #         TRAINING          #
     #############################
     # Training cycle
-    noise_factor = 0.35  # Added noise --> Pretext task SSL
-    num_epochs = 50
+    noise_factor = 0.30  # Added noise --> Pretext task SSL
+    num_epochs = 25
     history_da = {'train_loss': [], 'val_loss': []}
-
+    t0 = time.time()
     for epoch in range(num_epochs):
-        print('EPOCH %d/%d' % (epoch + 1, num_epochs))
+        print(' >> EPOCH %d/%d' % (epoch + 1, num_epochs))
+        t1 = time.time()
         # Training (use the training function)
         train_loss = train_epoch_den(
             encoder=encoder,
@@ -316,22 +393,28 @@ def main():
             decoder=decoder,
             device=device,
             dataloader=valid_loader,
-            loss_fn=loss_fn, noise_factor=noise_factor)
+            loss_fn=loss_fn, noise_factor=noise_factor, dataset_type="Validation")
 
         # Print Validationloss
         history_da['train_loss'].append(train_loss)
         history_da['val_loss'].append(val_loss)
-        print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs, train_loss, val_loss))
+        print(' >> EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs, train_loss, val_loss))
+        print(f" >> Consumed time in Epoch {epoch+1}: {time.time() - t1} seconds \n")
         if show_output:
             plot_ae_outputs_den(encoder, decoder, test_dataset, device, noise_factor=noise_factor)
 
-
-    # Saving the model.
-    # torch.save(encoder.state_dict(), "../models/autoencoder_model_1506a.pth")
-    torch.save(encoder.encoder_cnn.state_dict(), "../models/autoencoder_model_1506d_enc.pth")
-    torch.save(encoder.encoder_lin.state_dict(), "../models/autoencoder_model_1506d_lin.pth")
+    print(f" Time consumed to train: {(time.time() - t0)/60} minutes...")
     plot_ae_outputs_den(encoder, decoder, test_dataset, device, noise_factor=noise_factor)
     test_epoch_den(encoder, decoder, device, test_loader, loss_fn).item()
+
+    # Saving the model.
+    model_version = "a"
+    torch.save(encoder.state_dict(), f"../models/encoder_model_1706{model_version}_ep{num_epochs}_lr{lr}_{optimizer_name}.pth")
+    torch.save(encoder.encoder_cnn.state_dict(), f"../models/encoder_model_1706{model_version}_enc_ep{num_epochs}_lr{lr}_{optimizer_name}.pth")
+    torch.save(encoder.encoder_lin.state_dict(), f"../models/encoder_model_1706{model_version}_lin_ep{num_epochs}_lr{lr}_{optimizer_name}.pth")
+    torch.save(decoder.state_dict(), f"../models/decoder_model_1706{model_version}_ep{num_epochs}_lr{lr}_{optimizer_name}.pth")
+    torch.save(decoder.decoder_conv.state_dict(), f"../models/decoder_model_1706{model_version}_dec_ep{num_epochs}_lr{lr}_{optimizer_name}.pth")
+    torch.save(decoder.decoder_lin.state_dict(), f"../models/decoder_model_1706{model_version}_lin_ep{num_epochs}_lr{lr}_{optimizer_name}.pth")
 
 
 if __name__ == '__main__':
