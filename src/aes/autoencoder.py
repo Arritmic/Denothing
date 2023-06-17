@@ -14,6 +14,7 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 from torch import nn
+
 import torch.nn.functional as F
 import torch.optim as optim
 
@@ -30,10 +31,14 @@ class Encoder(nn.Module):
             nn.Conv2d(1, 8, 3, stride=2, padding=1),
             # nn.BatchNorm2d(8),
             nn.ReLU(True),
+            # nn.MaxPool2d(2),  # Add a MaxPooling layer here
+
             # Second convolutional layer
             nn.Conv2d(8, 16, 3, stride=2, padding=1),
             nn.BatchNorm2d(16),
             nn.ReLU(True),
+            # nn.MaxPool2d(2),  # Add a MaxPooling layer here
+
             # Third convolutional layer
             nn.Conv2d(16, 32, 3, stride=2, padding=0),
             nn.Dropout(0.25),
@@ -52,11 +57,13 @@ class Encoder(nn.Module):
         # Linear section
         self.encoder_lin = nn.Sequential(
             # First linear layer
-            nn.Linear(2 * 32, 128),
+            nn.Linear(2 * 32, fc2_input_dim),
             nn.ReLU(True),
             # Second linear layer
-            nn.Linear(128, encoded_space_dim)
+            nn.Linear(fc2_input_dim, encoded_space_dim)
         )
+
+
 
     def forward(self, x):
         # Apply convolutions
@@ -80,10 +87,10 @@ class Decoder(nn.Module):
         # Linear section
         self.decoder_lin = nn.Sequential(
             # First linear layer
-            nn.Linear(encoded_space_dim, 128),
-            nn.ReLU(True),
+            nn.Linear(encoded_space_dim, fc2_input_dim),
+            nn.SiLU(True),
             # Second linear layer
-            nn.Linear(128, 3 * 3 * 32),
+            nn.Linear(fc2_input_dim, 3 * 3 * 32),
             nn.ReLU(True)
         )
 
@@ -93,18 +100,25 @@ class Decoder(nn.Module):
         # Convolutional section
         self.decoder_conv = nn.Sequential(
             # First transposed convolution
-            # nn.ConvTranspose2d(32, 32, 3, stride=2, output_padding=0),
-            # nn.ReLU(True),
-            nn.ConvTranspose2d(32, 16, 3, stride=2, output_padding=0),
+            # nn.ConvTranspose2d(32, 16, 3, stride=2, output_padding=1),  # Update input and output channels
+            # nn.BatchNorm2d(32),
+            # nn.SiLU(True),
+
+            # Additional convolution
+            nn.ConvTranspose2d(32, 16, 3, stride=2, output_padding=0),  # Update input and output channels
             nn.BatchNorm2d(16),
             nn.SiLU(True),
+
             # Second transposed convolution
             nn.ConvTranspose2d(16, 8, 3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(8),
-            nn.ReLU(True),
+            nn.SiLU(True),
+
             # Third transposed convolution
-            nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(8, 1, 3, stride=2, padding=1, output_padding=1),
+            # nn.MaxPool2d(2),  # Add a MaxPooling layer here
         )
+
 
     def forward(self, x):
         # Apply linear layers
